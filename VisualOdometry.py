@@ -1,6 +1,7 @@
 import glob
 from pathlib import Path
 import matplotlib.pyplot as plt
+import tqdm
 
 from sklearn import preprocessing
 
@@ -8,8 +9,18 @@ import cv2 as cv
 import numpy as np
 
 class VisualOdometry:
-    def __init__(self):
-        self.skipFrames = 2#7#5#3#5 #3
+    def __init__(self, skip=None, corners=None, quality=None, min=None):
+        if skip is None:
+            self.skipFrames = 2#7#5#3#5 #3
+            self.maxCorners = 1600
+            self.qualitlyLevel = 0.05
+            self.minDistance = 10
+        else:
+            self.skipFrames = skip
+            self.maxCorners = corners
+            self.qualitlyLevel = quality
+            self.minDistance = min
+
         self.intrinsicParameters = []
         with open('./VO Practice Sequence/VO Practice Camera Parameters.txt') as f:
             # reading each line
@@ -22,10 +33,7 @@ class VisualOdometry:
                 thisRow = np.array(thisRow)
                 self.intrinsicParameters.append(thisRow)
 
-        print(self.intrinsicParameters)
         self.intrinsicParameters = np.array(self.intrinsicParameters)
-        print("start", self.intrinsicParameters)
-        print("start2", type(self.intrinsicParameters))
         self.distortionCoefficent = None
 
 
@@ -105,92 +113,6 @@ class VisualOdometry:
             return None
         return result
 
-    def templateMatching(self, pathToVid):
-        picList = list(glob.glob(pathToVid + "/**.png"))
-        picList.sort()
-        print(picList)
-
-        frame = cv.imread(picList[0])
-
-        saveAt = Path("./Results")
-        saveAt.mkdir(exist_ok=True)
-        titleName = "task2_"
-        cntr = 0
-        saveAs = ".avi"
-        saveHere = saveAt / (titleName + str(cntr) + saveAs)
-        while saveHere.exists():
-            cntr += 1
-            saveHere = saveAt / (titleName + str(cntr) + saveAs)
-
-        w = int(frame.shape[0])
-        h = int(frame.shape[1])
-
-        # video recorder
-        fourcc = cv.VideoWriter_fourcc(*'XVID')  # cv2.VideoWriter_fourcc() does not exist
-
-        myRecorder = cv.VideoWriter(str(saveHere), fourcc, 30, (w, h))
-
-
-        prevGray_list = []
-        prevPoints_list = []
-        templates_list = []
-        for x in range(self.skipFrames):
-            prevGray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-            prevPoints = cv.goodFeaturesToTrack(prevGray, maxCorners=400, qualityLevel=0.25, minDistance=20)
-            prevPoints = np.array(prevPoints)
-            prevPoints = np.squeeze(prevPoints, axis=1)
-            templates = self.makeTemplates(prevPoints, frame)
-            prevGray_list.append(prevGray)
-            prevPoints_list.append(prevPoints)
-            templates_list.append(templates)
-
-
-        overall_cntr = 0
-        cntr = 0
-        for pic in picList:
-            frame = cv.imread(pic)
-
-            frame32 = frame.astype(np.float32)
-
-            newPoints = []
-
-            self.cameraPoseMotion(str(pathToVid), overall_cntr, overall_cntr + 1)
-            overall_cntr += 1
-
-            for i in range(len(templates_list[cntr])):
-                template = templates_list[0][i]
-                oldPoint = prevPoints_list[cntr][i]
-
-                template = template.astype(np.float32)
-                newPoint = self.windowedTemplate(oldPoint, template, frame32.copy())
-                newPoints.append(newPoint)
-
-            newPoints = np.array(newPoints)
-
-            # draw the tracks
-            for i, (new, old) in enumerate(zip(newPoints, prevPoints_list[cntr])):
-                if new is None:
-                    continue
-                a, b = new[0], new[1]
-                c, d = old[0], old[1]#
-                frame = cv.line(frame, (int(a), int(b)), (int(c), int(d)), (0, 0, 255), 2)
-                frame = cv.circle(frame, (int(a), int(b)), 5, (0, 255, 0), -1)
-            cv.imshow("Current Frame", frame)
-
-            if cv.waitKey(1) & 0xFF == ord('a'):
-                break
-            myRecorder.write(frame)
-
-            prevPoints_list[cntr] = newPoints
-            # templates_list[cntr] = self.makeTemplates(newPoints, frame)
-            cntr += 1
-            if cntr >= self.skipFrames:
-                cntr = 0
-
-        #at the end release
-        myRecorder.release()
-
-
     def cameraPoseMotion(self, vidPath, firstFrame, secondFrame):
         self.firstFrame_index = firstFrame#100#240
         self.secondFrame_index = secondFrame#150#275
@@ -207,10 +129,16 @@ class VisualOdometry:
 
         # for x in range(self.skipFrames):
         prevGray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        prevPoints = cv.goodFeaturesToTrack(prevGray, maxCorners=800, qualityLevel=0.04, minDistance=10)
+        prevPoints = cv.goodFeaturesToTrack(prevGray, maxCorners=self.maxCorners, qualityLevel=self.qualitlyLevel, minDistance=self.minDistance)
 
-        thePicPath = (glob.glob(vidPath + "/**00" + str(secondFrame) + ".png"))[0]
-        frame = cv.imread(thePicPath)
+        thePicPath = (glob.glob(vidPath + "/**00" + str(secondFrame) + ".png"))
+        if len(thePicPath):
+            frame = cv.imread(thePicPath[0])
+        else:
+            print("got last frame")
+            frame = cv.imread(glob.glob(vidPath + "/**00" + str(701) + ".png")[0])
+        # print(len(thePicPath))
+        # frame = cv.imread(thePicPath)
 
         nextGray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
@@ -257,7 +185,7 @@ class VisualOdometry:
         self.Rotation = R
         self.Translation = t
 
-        return t, cv.Rodrigues(R)[0]
+        return t, R
 
     def drawGraph(self, allPoints):
         x = []
@@ -269,9 +197,12 @@ class VisualOdometry:
         prevZ = 0
         for point in allPoints:
             # print(thisX)
+            x_t = point[0][0]
+            y_t = point[1][0]
+            z_t = point[2][0]
 
-            thisX = point[0][0] + prevX
-            thisZ = abs(point[2][0]) + prevZ
+            thisX = (x_t / y_t) + prevX
+            thisZ = abs(z_t / y_t) + prevZ
             x.append(thisX)
             y.append(thisZ)
 
@@ -290,7 +221,7 @@ class VisualOdometry:
         # giving a title to my graph
         plt.title('The Graph')
 
-        saveHere = "./Results/plot_"
+        saveHere = "./Results/plot_" + str(self.skipFrames) + "_" + str(self.maxCorners) + "_" + str(self.qualitlyLevel) + "_" + str(self.minDistance) + "_"
         saveAs = ".png"
         cntr = 0
 
@@ -299,101 +230,41 @@ class VisualOdometry:
         plt.savefig(saveHere + str(cntr) + saveAs)
 
     def calculateAll(self, pathToVid):
-        picList = list(glob.glob(pathToVid + "/**.png"))
-        picList.sort()
-        print(picList)
-
-        frame = cv.imread(picList[0])
-
         saveAt = Path("./Results")
         saveAt.mkdir(exist_ok=True)
-        titleName = "task2_"
+        titleName = "R_T_Calculated_" + str(self.skipFrames) + "_" + str(self.maxCorners) + "_" + str(self.qualitlyLevel) + "_" + str(self.minDistance) + "_"
         cntr = 0
-        saveAs = ".avi"
+        saveAs = ".txt"
         saveHere = saveAt / (titleName + str(cntr) + saveAs)
         while saveHere.exists():
             cntr += 1
             saveHere = saveAt / (titleName + str(cntr) + saveAs)
 
-        w = int(frame.shape[0])
-        h = int(frame.shape[1])
-
-        # video recorder
-        fourcc = cv.VideoWriter_fourcc(*'XVID')  # cv2.VideoWriter_fourcc() does not exist
-
-        # myRecorder = cv.VideoWriter(str(saveHere), fourcc, 30, (w, h))
-
-
-        # prevGray_list = []
-        # prevPoints_list = []
-        # templates_list = []
-        # for x in range(self.skipFrames):
-        #     prevGray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        #     prevPoints = cv.goodFeaturesToTrack(prevGray, maxCorners=400, qualityLevel=0.25, minDistance=20)
-        #     prevPoints = np.array(prevPoints)
-        #     prevPoints = np.squeeze(prevPoints, axis=1)
-        #     templates = self.makeTemplates(prevPoints, frame)
-        #     prevGray_list.append(prevGray)
-        #     prevPoints_list.append(prevPoints)
-        #     templates_list.append(templates)
 
         allTranslation = []
-        # overall_cntr = 0
-        cntr = 0
+        writeList = []
 
-        for overall_cntr in range(0, 700):
+        for overall_cntr in (range(0, 700)):
             translation, rotation = self.cameraPoseMotion(str(pathToVid), overall_cntr, overall_cntr + self.skipFrames)
 
-            print("translation", overall_cntr, translation)
+            saveThis = str(rotation[0][0]) + " " + str(rotation[0][1]) + " " + str(rotation[0][2]) + " "
+            saveThis += str(translation[0][0]) + " "
+            saveThis += str(rotation[1][0]) + " " + str(rotation[1][1]) + " " + str(rotation[1][2]) + " "
+            saveThis += str(translation[1][0]) + " "
+            saveThis += str(rotation[2][0]) + " " + str(rotation[2][1]) + " " + str(rotation[2][2]) + " "
+            saveThis += str(translation[2][0]) +"\n"
+
+            writeList.append(saveThis)
+
+            # print("saveThis", saveThis)
+            # print("rotation", rotation)
+            #
+            # print("translation", overall_cntr, translation)
             allTranslation.append(translation)
 
-        # print(allTranslation)
-        self.drawGraph(allTranslation)
-        # for pic in picList:
-        #     frame = cv.imread(pic)
-        #
-        #     frame32 = frame.astype(np.float32)
-        #
-        #     newPoints = []
-        #
-        #     translation, rotation = self.cameraPoseMotion(str(pathToVid), overall_cntr, overall_cntr + 1)
-        #
-        #     print("translation", overall_cntr, translation)
-        #     allTranslation.append(translation)
-        #     overall_cntr += 1
-        #
-        #     for i in range(len(templates_list[cntr])):
-        #         template = templates_list[0][i]
-        #         oldPoint = prevPoints_list[cntr][i]
-        #
-        #         template = template.astype(np.float32)
-        #         newPoint = self.windowedTemplate(oldPoint, template, frame32.copy())
-        #         newPoints.append(newPoint)
-        #
-        #     newPoints = np.array(newPoints)
-        #
-        #     # draw the tracks
-        #     for i, (new, old) in enumerate(zip(newPoints, prevPoints_list[cntr])):
-        #         if new is None:
-        #             continue
-        #         a, b = new[0], new[1]
-        #         c, d = old[0], old[1]#
-        #         frame = cv.line(frame, (int(a), int(b)), (int(c), int(d)), (0, 0, 255), 2)
-        #         frame = cv.circle(frame, (int(a), int(b)), 5, (0, 255, 0), -1)
-        #     cv.imshow("Current Frame", frame)
-        #
-        #     if cv.waitKey(1) & 0xFF == ord('a'):
-        #         break
-        #     myRecorder.write(frame)
-        #
-        #     prevPoints_list[cntr] = newPoints
-        #     # templates_list[cntr] = self.makeTemplates(newPoints, frame)
-        #     cntr += 1
-        #     if cntr >= self.skipFrames:
-        #         cntr = 0
-        #
-        # #at the end release
-        # myRecorder.release()
+        with open(str(saveHere), 'w') as f:
+            f.writelines(writeList)
 
+        self.drawGraph(allTranslation)
 
 
