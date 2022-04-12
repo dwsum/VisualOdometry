@@ -229,6 +229,8 @@ class VisualOdometry:
             cntr += 1
         plt.savefig(saveHere + str(cntr) + saveAs)
 
+        plt.figure()
+
     def calculateAll(self, pathToVid):
         saveAt = Path("./Results")
         saveAt.mkdir(exist_ok=True)
