@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import tqdm
 
 from VisualOdometry import VisualOdometry
@@ -16,11 +18,14 @@ if __name__ == "__main__":
     #                 myVO.calculateAll("./VO Practice Sequence/VO Practice Sequence/", totalVid = 701)
 
 
-    doThese = [(2, 800, 0.05, 50), (2, 1600, 0.05, 50), (3, 800, 0.05, 5), (3, 800, 0.09, 10), (3, 1600, 0.09, 10), (4, 800, 0.01, 15), (4, 800, 0.03, 20), (4, 800, 0.05, 10), (4, 800, 0.07, 10), (4, 800, 0.07, 15), (4, 800, 0.07, 20), (4, 1600, 0.07, 10), (4, 1600, 0.07, 15), (4, 1600, 0.07, 20), (5, 800, 0.03, 50), (5, 800, 0.07, 10), (5, 800, 0.07, 15), (5, 800, 0.09, 50), (5, 1600, 0.03, 5), (5, 1600, 0.03, 50), (5, 1600, 0.07, 10), (5, 1600, 0.07, 15), (5, 1600, 0.09, 50)]
+    # doThese = [(2, 800, 0.05, 50), (2, 1600, 0.05, 50), (3, 800, 0.05, 5), (3, 800, 0.09, 10), (3, 1600, 0.09, 10), (4, 800, 0.01, 15), (4, 800, 0.03, 20), (4, 800, 0.05, 10), (4, 800, 0.07, 10), (4, 800, 0.07, 15), (4, 800, 0.07, 20), (4, 1600, 0.07, 10), (4, 1600, 0.07, 15), (4, 1600, 0.07, 20), (5, 800, 0.03, 50), (5, 800, 0.07, 10), (5, 800, 0.07, 15), (5, 800, 0.09, 50), (5, 1600, 0.03, 5), (5, 1600, 0.03, 50), (5, 1600, 0.07, 10), (5, 1600, 0.07, 15), (5, 1600, 0.09, 50)]
+    # doThese = [(4, 800, 0.01, 15)]
+    doThese = [(1, 800, 0.1, 10)]
 
-    for skip, corner, quality, minDist in tqdm.tqdm(doThese):
+    for skip, corner, quality, minDist in (doThese):
         myVO = VisualOdometry(skip, corner, quality, minDist)
 
-        myVO.calculateAll("./VO Practice Sequence/VO Practice Sequence/", totalVid = 701)
+        myVO.calculateAll_sift("./VO Practice Sequence/VO Practice Sequence/", totalVid = 701)
         # myVO.calculateAll("./data/colorVid.avi")
         # myVO.calculateAll("./data/vid_0/", totalVid = 208)
+        # myVO.calculateImageStream(Path("./VO Practice Sequence/VO Practice Sequence/"))
